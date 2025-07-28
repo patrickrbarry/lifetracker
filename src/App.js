@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Settings, BarChart3, Calendar, Bell, ChevronDown, ChevronUp, Save, Dumbbell, MapPin, Pill, Gamepad2, BookOpen, Users } from 'lucide-react';
+import { Plus, Settings, BarChart3, Calendar, ChevronDown, ChevronUp, Save, Dumbbell, MapPin, Pill, Gamepad2, BookOpen, Users } from 'lucide-react';
 import './App.css';
 
 const Lifetracker = () => {
@@ -28,24 +28,6 @@ const Lifetracker = () => {
     reading: BookOpen,
     social: Users
   };
-
-  useEffect(() => {
-    loadStoredData();
-    // Expand all categories by default for better UX
-    const defaultExpanded = {};
-    categories.forEach(cat => {
-      defaultExpanded[cat.id] = true;
-    });
-    setExpandedCategories(defaultExpanded);
-  }, []);
-
-  useEffect(() => {
-    saveToStorage('categories', categories);
-  }, [categories]);
-
-  useEffect(() => {
-    saveToStorage('dailyEntries', dailyEntries);
-  }, [dailyEntries]);
 
   const loadStoredData = () => {
     try {
@@ -128,6 +110,27 @@ const Lifetracker = () => {
       console.error('Error loading stored data:', error);
     }
   };
+
+  useEffect(() => {
+    loadStoredData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    // Expand all categories by default for better UX
+    const defaultExpanded = {};
+    categories.forEach(cat => {
+      defaultExpanded[cat.id] = true;
+    });
+    setExpandedCategories(defaultExpanded);
+  }, [categories]);
+
+  useEffect(() => {
+    saveToStorage('categories', categories);
+  }, [categories]);
+
+  useEffect(() => {
+    saveToStorage('dailyEntries', dailyEntries);
+  }, [dailyEntries]);
 
   const saveToStorage = (key, data) => {
     try {
@@ -232,8 +235,6 @@ const Lifetracker = () => {
   };
 
   const renderActivityInput = (category, activity, currentValue) => {
-    const key = `${category.id}_${activity.id}`;
-    
     switch (activity.inputType) {
       case 'number':
         return (
