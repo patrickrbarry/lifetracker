@@ -43,10 +43,10 @@ const Lifetracker = () => {
             name: 'Gym',
             icon: 'gym',
             activities: [
-              { id: 'pushups', name: 'Pushups', inputType: 'number', parameters: { min: 0, max: 3 } },
-              { id: 'pullups', name: 'Pull-ups', inputType: 'number', parameters: { min: 0, max: 3 } },
-              { id: 'planks', name: 'Planks/Crunches', inputType: 'number', parameters: { min: 0, max: 3 } },
-              { id: 'bench', name: 'Bench', inputType: 'number', parameters: { min: 0, max: 3 } }
+              { id: 'pushups', name: 'Pushups', inputType: 'numberPicker', parameters: { min: 0, max: 4 } },
+              { id: 'pullups', name: 'Pull-ups', inputType: 'numberPicker', parameters: { min: 0, max: 4 } },
+              { id: 'planks', name: 'Planks/Crunches', inputType: 'numberPicker', parameters: { min: 0, max: 4 } },
+              { id: 'bench', name: 'Bench', inputType: 'numberPicker', parameters: { min: 0, max: 4 } }
             ]
           },
           {
@@ -251,6 +251,21 @@ const Lifetracker = () => {
           </div>
         );
       
+      case 'numberPicker':
+        return (
+          <div className="number-picker-container">
+            {[...Array(5)].map((_, index) => (
+              <button
+                key={index}
+                onClick={() => updateDailyEntry(category.id, activity.id, index)}
+                className={`number-picker-button ${currentValue === index ? 'selected' : ''}`}
+              >
+                {index}
+              </button>
+            ))}
+          </div>
+        );
+      
       case 'toggle':
         return (
           <button
@@ -348,6 +363,118 @@ const Lifetracker = () => {
     return IconComponent ? <IconComponent size={24} /> : null;
   };
 
+  const getHistoryData = () => {
+    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    const last7Days = dates.slice(-7);
+    
+    const historyByCategory = {};
+    
+    categories.forEach(category => {
+      historyByCategory[category.id] = {
+        name: category.name,
+        icon: category.icon,
+        data: last7Days.map(date => {
+          const dayData = dailyEntries[date] || {};
+          const categoryData = {};
+          
+          category.activities.forEach(activity => {
+            const key = `${category.id}_${activity.id}`;
+            categoryData[activity.name] = dayData[key] || 0;
+          });
+          
+          return {
+            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            fullDate: date,
+            ...categoryData
+          };
+        })
+      };
+    });
+    
+    return historyByCategory;
+  };
+
+  const renderHistoryView = () => {
+    const historyData = getHistoryData();
+    
+    if (Object.keys(dailyEntries).length === 0) {
+      return (
+        <div className="history-empty">
+          <h3>No data yet</h3>
+          <p>Start tracking activities to see your progress here!</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="history-container">
+        <h2 className="history-title">Your Progress (Last 7 Days)</h2>
+        
+        {Object.entries(historyData).map(([categoryId, categoryHistory]) => (
+          <div key={categoryId} className="history-category-card">
+            <div className="history-category-header">
+              {getCategoryIcon(categoryHistory.icon)}
+              <h3>{categoryHistory.name}</h3>
+            </div>
+            
+            <div className="history-timeline">
+              {categoryHistory.data.map((dayData, index) => (
+                <div key={index} className="history-day">
+                  <div className="history-date">{dayData.date}</div>
+                  <div className="history-activities">
+                    {Object.entries(dayData).filter(([key]) => 
+                      key !== 'date' && key !== 'fullDate'
+                    ).map(([activityName, value]) => (
+                      <div key={activityName} className="history-activity">
+                        <span className="history-activity-name">{activityName}:</span>
+                        <span className="history-activity-value">
+                          {typeof value === 'boolean' ? (value ? '✓' : '✗') : 
+                           typeof value === 'number' ? value :
+                           value || '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  if (currentView === 'history') {
+    return (
+      <div className="app-container">
+        <div className="app-header">
+          <h1 className="app-title">History</h1>
+          <button onClick={() => setCurrentView('entry')} className="back-button">
+            Back
+          </button>
+        </div>
+        {renderHistoryView()}
+        
+        <div className="bottom-nav">
+          <button 
+            onClick={() => setCurrentView('entry')} 
+            className={`nav-button ${currentView === 'entry' ? 'active' : ''}`}
+          >
+            <Calendar size={20} />
+            <span>Entry</span>
+          </button>
+          <button 
+            onClick={() => setCurrentView('history')} 
+            className={`nav-button ${currentView === 'history' ? 'active' : ''}`}
+          >
+            <BarChart3 size={20} />
+            <span>History</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (currentView === 'settings') {
     return (
       <div className="app-container">
@@ -421,6 +548,7 @@ const Lifetracker = () => {
                   <option value="checkbox">Checkbox</option>
                   <option value="toggle">Yes/No Toggle</option>
                   <option value="number">Number Range</option>
+                  <option value="numberPicker">Number Picker (0-4)</option>
                   <option value="radio">Radio Buttons</option>
                   <option value="dropdown">Dropdown</option>
                   <option value="learningDropdown">Learning Dropdown</option>
