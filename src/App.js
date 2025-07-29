@@ -363,31 +363,51 @@ const Lifetracker = () => {
     return IconComponent ? <IconComponent size={24} /> : null;
   };
 
-  const getHistoryData = () => {
+  const getHistoryData = (timeRange = 7) => {
     const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
-    const last7Days = dates.slice(-7);
+    const selectedDays = dates.slice(-timeRange);
     
     const historyByCategory = {};
     
     categories.forEach(category => {
-      historyByCategory[category.id] = {
-        name: category.name,
-        icon: category.icon,
-        data: last7Days.map(date => {
+      const categoryData = [];
+      
+      category.activities.forEach(activity => {
+        const activityData = selectedDays.map(date => {
           const dayData = dailyEntries[date] || {};
-          const categoryData = {};
+          const key = `${category.id}_${activity.id}`;
+          let value = dayData[key];
           
-          category.activities.forEach(activity => {
-            const key = `${category.id}_${activity.id}`;
-            categoryData[activity.name] = dayData[key] || 0;
-          });
+          // Convert different value types to numbers for charting
+          if (typeof value === 'boolean') {
+            value = value ? 1 : 0;
+          } else if (typeof value === 'string' && value !== '') {
+            value = 1; // For dropdown/text selections, count as 1 if selected
+          } else if (typeof value === 'number') {
+            value = value;
+          } else {
+            value = 0;
+          }
           
           return {
             date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             fullDate: date,
-            ...categoryData
+            value: value
           };
-        })
+        });
+        
+        categoryData.push({
+          activityName: activity.name,
+          activityId: activity.id,
+          inputType: activity.inputType,
+          data: activityData
+        });
+      });
+      
+      historyByCategory[category.id] = {
+        name: category.name,
+        icon: category.icon,
+        activities: categoryData
       };
     });
     
@@ -395,7 +415,8 @@ const Lifetracker = () => {
   };
 
   const renderHistoryView = () => {
-    const historyData = getHistoryData();
+    const [timeRange, setTimeRange] = useState(7);
+    const historyData = getHistoryData(timeRange);
     
     if (Object.keys(dailyEntries).length === 0) {
       return (
@@ -408,7 +429,29 @@ const Lifetracker = () => {
 
     return (
       <div className="history-container">
-        <h2 className="history-title">Your Progress (Last 7 Days)</h2>
+        <div className="history-header">
+          <h2 className="history-title">Your Progress</h2>
+          <div className="time-range-selector">
+            <button 
+              onClick={() => setTimeRange(7)} 
+              className={`time-range-button ${timeRange === 7 ? 'active' : ''}`}
+            >
+              7 Days
+            </button>
+            <button 
+              onClick={() => setTimeRange(14)} 
+              className={`time-range-button ${timeRange === 14 ? 'active' : ''}`}
+            >
+              14 Days
+            </button>
+            <button 
+              onClick={() => setTimeRange(30)} 
+              className={`time-range-button ${timeRange === 30 ? 'active' : ''}`}
+            >
+              30 Days
+            </button>
+          </div>
+        </div>
         
         {Object.entries(historyData).map(([categoryId, categoryHistory]) => (
           <div key={categoryId} className="history-category-card">
@@ -417,20 +460,62 @@ const Lifetracker = () => {
               <h3>{categoryHistory.name}</h3>
             </div>
             
-            <div className="history-timeline">
-              {categoryHistory.data.map((dayData, index) => (
-                <div key={index} className="history-day">
-                  <div className="history-date">{dayData.date}</div>
-                  <div className="history-activities">
-                    {Object.entries(dayData).filter(([key]) => 
-                      key !== 'date' && key !== 'fullDate'
-                    ).map(([activityName, value]) => (
-                      <div key={activityName} className="history-activity">
-                        <span className="history-activity-name">{activityName}:</span>
-                        <span className="history-activity-value">
-                          {typeof value === 'boolean' ? (value ? '✓' : '✗') : 
-                           typeof value === 'number' ? value :
-                           value || '—'}
+            <div className="history-activities-grid">
+              {categoryHistory.activities.map((activity) => (
+                <div key={activity.activityId} className="history-activity-chart">
+                  <h4 className="activity-chart-title">{activity.activityName}</h4>
+                  <div className="mini-chart">
+                    <svg width="100%" height="60" viewBox="0 0 200 60">
+                      {/* Chart background */}
+                      <rect width="200" height="60" fill="#f8f9fa" rx="4"/>
+                      
+                      {/* Chart lines and points */}
+                      {activity.data.length > 1 && (() => {
+                        const maxValue = Math.max(...activity.data.map(d => d.value), 1);
+                        const points = activity.data.map((d, i) => ({
+                          x: (i / (activity.data.length - 1)) * 180 + 10,
+                          y: 50 - (d.value / maxValue) * 40
+                        }));
+                        
+                        const pathData = points.map((p, i) => 
+                          i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+                        ).join(' ');
+                        
+                        return (
+                          <>
+                            {/* Line */}
+                            <path 
+                              d={pathData} 
+                              stroke="#2563eb" 
+                              strokeWidth="2" 
+                              fill="none"
+                            />
+                            {/* Points */}
+                            {points.map((p, i) => (
+                              <circle
+                                key={i}
+                                cx={p.x}
+                                cy={p.y}
+                                r="3"
+                                fill="#2563eb"
+                              />
+                            ))}
+                          </>
+                        );
+                      })()}
+                    </svg>
+                  </div>
+                  
+                  {/* Recent values */}
+                  <div className="recent-values">
+                    {activity.data.slice(-3).map((day, index) => (
+                      <div key={index} className="recent-value">
+                        <span className="recent-date">{day.date}</span>
+                        <span className="recent-number">
+                          {activity.inputType === 'toggle' || activity.inputType === 'checkbox' 
+                            ? (day.value ? '✓' : '✗')
+                            : day.value
+                          }
                         </span>
                       </div>
                     ))}
