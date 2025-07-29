@@ -18,6 +18,7 @@ const Lifetracker = () => {
     parameters: {}
   });
   const [newReadingLabel, setNewReadingLabel] = useState('');
+  const [timeRange, setTimeRange] = useState(7);
 
   // Category icons mapping
   const categoryIcons = {
@@ -415,7 +416,6 @@ const Lifetracker = () => {
   };
 
   const renderHistoryView = () => {
-    const [timeRange, setTimeRange] = useState(7);
     const historyData = getHistoryData(timeRange);
     
     if (Object.keys(dailyEntries).length === 0) {
