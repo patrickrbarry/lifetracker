@@ -384,11 +384,10 @@ const Lifetracker = () => {
             value = value ? 1 : 0;
           } else if (typeof value === 'string' && value !== '') {
             value = 1; // For dropdown/text selections, count as 1 if selected
-          } else if (typeof value === 'number') {
-            value = value;
-          } else {
+          } else if (typeof value !== 'number') {
             value = 0;
           }
+          // If value is already a number, keep it as is
           
           return {
             date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
