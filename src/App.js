@@ -175,6 +175,7 @@ const Lifetracker = () => {
     loadStoredData();
     checkNotificationPermission();
     checkForNudge();
+    registerServiceWorker();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -333,6 +334,20 @@ const Lifetracker = () => {
     }
   };
 
+  const registerServiceWorker = () => {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('SW registered: ', registration);
+          })
+          .catch((registrationError) => {
+            console.log('SW registration failed: ', registrationError);
+          });
+      });
+    }
+  };
+
   const getCurrentDateEntry = () => {
     return dailyEntries[currentDate] || {};
   };
@@ -424,386 +439,6 @@ const Lifetracker = () => {
     switch (activity.inputType) {
       case 'number':
         return (
-          <div className="number-input">
-            <span className="number-label">Sets: {activity.parameters.min || 0}-{activity.parameters.max || 10}</span>
-            <input
-              type="number"
-              min={activity.parameters.min || 0}
-              max={activity.parameters.max || 10}
-              value={currentValue || 0}
-              onChange={(e) => updateDailyEntry(category.id, activity.id, parseInt(e.target.value))}
-              className="number-field"
-            />
-          </div>
-        );
-      
-      case 'numberPicker':
-        return (
-          <div className="number-picker-container">
-            {[...Array(5)].map((_, index) => (
-              <button
-                key={index}
-                onClick={() => updateDailyEntry(category.id, activity.id, index)}
-                className={`number-picker-button ${currentValue === index ? 'selected' : ''}`}
-              >
-                {index}
-              </button>
-            ))}
-          </div>
-        );
-      
-      case 'toggle':
-        return (
-          <button
-            onClick={() => updateDailyEntry(category.id, activity.id, !currentValue)}
-            className={`toggle-button ${currentValue ? 'active' : ''}`}
-          >
-            {currentValue ? 'YES' : 'NO'}
-          </button>
-        );
-      
-      case 'checkbox':
-        return (
-          <button
-            onClick={() => updateDailyEntry(category.id, activity.id, !currentValue)}
-            className={`checkbox-button ${currentValue ? 'checked' : ''}`}
-          >
-            {currentValue ? '✓' : '○'}
-          </button>
-        );
-      
-      case 'radio':
-        return (
-          <div className="radio-group">
-            {activity.parameters.options?.map(option => (
-              <button
-                key={option}
-                onClick={() => updateDailyEntry(category.id, activity.id, option)}
-                className={`radio-button ${currentValue === option ? 'selected' : ''}`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        );
-      
-      case 'dropdown':
-        return (
-          <select
-            value={currentValue || ''}
-            onChange={(e) => updateDailyEntry(category.id, activity.id, e.target.value)}
-            className="dropdown-select"
-          >
-            <option value="">Select...</option>
-            {activity.parameters.options?.map(option => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        );
-      
-      case 'learningDropdown':
-        return (
-          <div className="learning-dropdown-container">
-            <select
-              value={currentValue || ''}
-              onChange={(e) => updateDailyEntry(category.id, activity.id, e.target.value)}
-              className="dropdown-select"
-            >
-              <option value="">Select or add below...</option>
-              {activity.parameters.options?.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-            <div className="add-reading-container">
-              <input
-                type="text"
-                placeholder="Add new content (e.g., 'Book: Title' or 'Article: Name')"
-                value={newReadingLabel}
-                onChange={(e) => setNewReadingLabel(e.target.value)}
-                className="reading-input"
-              />
-              <button
-                onClick={() => addNewReadingLabel(category.id, activity.id)}
-                className="add-reading-button"
-                disabled={!newReadingLabel.trim()}
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        );
-
-      case 'toggleWithText':
-        const toggleValue = currentValue && typeof currentValue === 'object' ? currentValue.enabled : false;
-        const textValue = currentValue && typeof currentValue === 'object' ? currentValue.text : '';
-        
-        return (
-          <div className="toggle-with-text-container">
-            <button
-              onClick={() => {
-                const newValue = {
-                  enabled: !toggleValue,
-                  text: textValue
-                };
-                updateDailyEntry(category.id, activity.id, newValue);
-              }}
-              className={`toggle-button ${toggleValue ? 'active' : ''}`}
-            >
-              {toggleValue ? 'YES' : 'NO'}
-            </button>
-            <input
-              type="text"
-              placeholder={`${activity.name} details...`}
-              value={textValue}
-              onChange={(e) => {
-                const newValue = {
-                  enabled: toggleValue,
-                  text: e.target.value
-                };
-                updateDailyEntry(category.id, activity.id, newValue);
-              }}
-              className="toggle-text-input"
-            />
-          </div>
-        );
-      
-      default:
-        return <span>Unknown input type</span>;
-    }
-  };
-
-  const saveAllData = () => {
-    saveToStorage('categories', categories);
-    saveToStorage('dailyEntries', dailyEntries);
-    alert('Data saved successfully!');
-  };
-
-  const exportToCSV = () => {
-    // Create CSV header
-    const allActivities = [];
-    categories.forEach(category => {
-      category.activities.forEach(activity => {
-        allActivities.push(`${category.name}: ${activity.name}`);
-      });
-    });
-    
-    const csvHeaders = ['Date', ...allActivities];
-    
-    // Get all dates and sort them
-    const allDates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
-    
-    // Create CSV rows
-    const csvRows = [csvHeaders.join(',')]; // Header row
-    
-    allDates.forEach(date => {
-      const dayData = dailyEntries[date] || {};
-      const row = [date];
-      
-      categories.forEach(category => {
-        category.activities.forEach(activity => {
-          const key = `${category.id}_${activity.id}`;
-          let value = dayData[key];
-          
-          // Format different value types for CSV
-          if (value === undefined || value === null) {
-            value = '';
-          } else if (typeof value === 'boolean') {
-            value = value ? 'Yes' : 'No';
-          } else if (typeof value === 'object' && value.enabled !== undefined) {
-            // Handle toggleWithText format
-            value = value.enabled ? `Yes: ${value.text || ''}` : 'No';
-          } else if (typeof value === 'string') {
-            // Escape commas and quotes in text
-            value = `"${value.replace(/"/g, '""')}"`;
-          }
-          
-          row.push(value);
-        });
-      });
-      
-      csvRows.push(row.join(','));
-    });
-    
-    // Create and download the file
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `lifetracker-data-${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
-
-  const getHistoryData = (timeRange = 7) => {
-    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
-    const selectedDays = dates.slice(-timeRange);
-    
-    const historyByCategory = {};
-    
-    categories.forEach(category => {
-      const categoryData = [];
-      
-      category.activities.forEach(activity => {
-        const activityData = selectedDays.map(date => {
-          const dayData = dailyEntries[date] || {};
-          const key = `${category.id}_${activity.id}`;
-          let value = dayData[key];
-          
-          // Convert different value types to numbers for charting
-          if (typeof value === 'boolean') {
-            value = value ? 1 : 0;
-          } else if (typeof value === 'string' && value !== '') {
-            value = 1; // For dropdown/text selections, count as 1 if selected
-          } else if (typeof value !== 'number') {
-            value = 0;
-          }
-          // If value is already a number, keep it as is
-          
-          return {
-            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            fullDate: date,
-            value: value
-          };
-        });
-        
-        categoryData.push({
-          activityName: activity.name,
-          activityId: activity.id,
-          inputType: activity.inputType,
-          data: activityData
-        });
-      });
-      
-      historyByCategory[category.id] = {
-        name: category.name,
-        icon: category.icon,
-        activities: categoryData
-      };
-    });
-    
-    return historyByCategory;
-  };
-
-  const getGymActivitiesData = (timeRange = 7) => {
-    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
-    const selectedDays = timeRange === 'all' ? dates : dates.slice(-timeRange);
-    
-    const gymCategory = categories.find(cat => cat.id === 'gym');
-    if (!gymCategory) return [];
-    
-    const gymActivities = [];
-    
-    gymCategory.activities.forEach((activity, activityIndex) => {
-      const activityData = selectedDays.map(date => {
-        const dayData = dailyEntries[date] || {};
-        const key = `${gymCategory.id}_${activity.id}`;
-        let value = dayData[key];
-        
-        // Gym activities should be numeric (0-4)
-        if (typeof value !== 'number') {
-          value = 0;
-        }
-        
-        return {
-          date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          fullDate: date,
-          value: value
-        };
-      });
-      
-      // Different shades of blue for gym activities
-      const blueShades = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd'];
-      
-      gymActivities.push({
-        activityName: activity.name,
-        fullName: activity.name,
-        data: activityData,
-        color: blueShades[activityIndex % blueShades.length],
-        categoryId: gymCategory.id
-      });
-    });
-    
-    return gymActivities;
-  };
-
-  const getBinaryActivitiesData = (timeRange = 7) => {
-    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
-    const selectedDays = timeRange === 'all' ? dates : dates.slice(-timeRange);
-    
-    const binaryCategories = categories.filter(cat => cat.id !== 'gym');
-    const allBinaryActivities = [];
-    
-    binaryCategories.forEach(category => {
-      category.activities.forEach(activity => {
-        allBinaryActivities.push({
-          categoryName: category.name,
-          activityName: activity.name,
-          fullName: `${category.name}: ${activity.name}`,
-          categoryId: category.id,
-          activityId: activity.id,
-          color: getCategoryColor(category.id)
-        });
-      });
-    });
-    
-    const dailyData = selectedDays.map(date => {
-      const dayData = dailyEntries[date] || {};
-      const completedActivities = [];
-      let totalCompleted = 0;
-      
-      allBinaryActivities.forEach(activity => {
-        const key = `${activity.categoryId}_${activity.activityId}`;
-        let value = dayData[key];
-        
-        // Convert to binary
-        let isCompleted = false;
-        if (typeof value === 'boolean') {
-          isCompleted = value;
-        } else if (typeof value === 'object' && value.enabled !== undefined) {
-          isCompleted = value.enabled;
-        } else if (typeof value === 'string' && value !== '') {
-          isCompleted = true;
-        } else if (typeof value === 'number' && value > 0) {
-          isCompleted = true;
-        }
-        
-        if (isCompleted) {
-          completedActivities.push(activity);
-          totalCompleted++;
-        }
-      });
-      
-      return {
-        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        fullDate: date,
-        completedActivities,
-        totalCompleted,
-        completionRate: allBinaryActivities.length > 0 ? (totalCompleted / allBinaryActivities.length) * 100 : 0
-      };
-    });
-    
-    return { dailyData, allBinaryActivities };
-  };
-
-  const renderHistoryView = () => {
-    const historyData = getHistoryData(timeRange);
-    
-    if (Object.keys(dailyEntries).length === 0) {
-      return (
-        <div className="history-empty">
-          <h3>No data yet</h3>
-          <p>Start tracking activities to see your progress here!</p>
-        </div>
-      );
-    }
-
-    return (
       <div className="history-container">
         <div className="history-header">
           <h2 className="history-title">Your Progress</h2>
@@ -904,33 +539,7 @@ const Lifetracker = () => {
     );
   };
 
-  const renderNudgeBanner = () => {
-    if (!showNudge) return null;
-    
-    const { completionRate, completedActivities, totalActivities } = checkForNudge();
-    
-    return (
-      <div className="nudge-banner">
-        <div className="nudge-content">
-          <div className="nudge-text">
-            <strong>Keep it up!</strong> You've completed {completedActivities} of {totalActivities} activities today ({Math.round(completionRate)}%)
-          </div>
-          <button 
-            onClick={() => setShowNudge(false)}
-            className="nudge-dismiss"
-          >
-            ×
-          </button>
-        </div>
-        <div className="nudge-progress">
-          <div 
-            className="nudge-progress-bar" 
-            style={{ width: `${completionRate}%` }}
-          ></div>
-        </div>
-      </div>
-    );
-  };
+  const renderDashboardView = () => {
     if (Object.keys(dailyEntries).length === 0) {
       return (
         <div className="dashboard-empty">
@@ -1656,3 +1265,411 @@ const Lifetracker = () => {
 };
 
 export default Lifetracker;
+          <div className="number-input">
+            <span className="number-label">Sets: {activity.parameters.min || 0}-{activity.parameters.max || 10}</span>
+            <input
+              type="number"
+              min={activity.parameters.min || 0}
+              max={activity.parameters.max || 10}
+              value={currentValue || 0}
+              onChange={(e) => updateDailyEntry(category.id, activity.id, parseInt(e.target.value))}
+              className="number-field"
+            />
+          </div>
+        );
+      
+      case 'numberPicker':
+        return (
+          <div className="number-picker-container">
+            {[...Array(5)].map((_, index) => (
+              <button
+                key={index}
+                onClick={() => updateDailyEntry(category.id, activity.id, index)}
+                className={`number-picker-button ${currentValue === index ? 'selected' : ''}`}
+              >
+                {index}
+              </button>
+            ))}
+          </div>
+        );
+      
+      case 'toggle':
+        return (
+          <button
+            onClick={() => updateDailyEntry(category.id, activity.id, !currentValue)}
+            className={`toggle-button ${currentValue ? 'active' : ''}`}
+          >
+            {currentValue ? 'YES' : 'NO'}
+          </button>
+        );
+      
+      case 'checkbox':
+        return (
+          <button
+            onClick={() => updateDailyEntry(category.id, activity.id, !currentValue)}
+            className={`checkbox-button ${currentValue ? 'checked' : ''}`}
+          >
+            {currentValue ? '✓' : '○'}
+          </button>
+        );
+      
+      case 'radio':
+        return (
+          <div className="radio-group">
+            {activity.parameters.options?.map(option => (
+              <button
+                key={option}
+                onClick={() => updateDailyEntry(category.id, activity.id, option)}
+                className={`radio-button ${currentValue === option ? 'selected' : ''}`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        );
+      
+      case 'dropdown':
+        return (
+          <select
+            value={currentValue || ''}
+            onChange={(e) => updateDailyEntry(category.id, activity.id, e.target.value)}
+            className="dropdown-select"
+          >
+            <option value="">Select...</option>
+            {activity.parameters.options?.map(option => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        );
+      
+      case 'learningDropdown':
+        return (
+          <div className="learning-dropdown-container">
+            <select
+              value={currentValue || ''}
+              onChange={(e) => updateDailyEntry(category.id, activity.id, e.target.value)}
+              className="dropdown-select"
+            >
+              <option value="">Select or add below...</option>
+              {activity.parameters.options?.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            <div className="add-reading-container">
+              <input
+                type="text"
+                placeholder="Add new content (e.g., 'Book: Title' or 'Article: Name')"
+                value={newReadingLabel}
+                onChange={(e) => setNewReadingLabel(e.target.value)}
+                className="reading-input"
+              />
+              <button
+                onClick={() => addNewReadingLabel(category.id, activity.id)}
+                className="add-reading-button"
+                disabled={!newReadingLabel.trim()}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        );
+
+      case 'toggleWithText':
+        const toggleValue = currentValue && typeof currentValue === 'object' ? currentValue.enabled : false;
+        const textValue = currentValue && typeof currentValue === 'object' ? currentValue.text : '';
+        
+        return (
+          <div className="toggle-with-text-container">
+            <button
+              onClick={() => {
+                const newValue = {
+                  enabled: !toggleValue,
+                  text: textValue
+                };
+                updateDailyEntry(category.id, activity.id, newValue);
+              }}
+              className={`toggle-button ${toggleValue ? 'active' : ''}`}
+            >
+              {toggleValue ? 'YES' : 'NO'}
+            </button>
+            <input
+              type="text"
+              placeholder={`${activity.name} details...`}
+              value={textValue}
+              onChange={(e) => {
+                const newValue = {
+                  enabled: toggleValue,
+                  text: e.target.value
+                };
+                updateDailyEntry(category.id, activity.id, newValue);
+              }}
+              className="toggle-text-input"
+            />
+          </div>
+        );
+      
+      default:
+        return <span>Unknown input type</span>;
+    }
+  };
+
+  const saveAllData = () => {
+    saveToStorage('categories', categories);
+    saveToStorage('dailyEntries', dailyEntries);
+    alert('Data saved successfully!');
+  };
+
+  const exportToCSV = () => {
+    // Create CSV header
+    const allActivities = [];
+    categories.forEach(category => {
+      category.activities.forEach(activity => {
+        allActivities.push(`${category.name}: ${activity.name}`);
+      });
+    });
+    
+    const csvHeaders = ['Date', ...allActivities];
+    
+    // Get all dates and sort them
+    const allDates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    
+    // Create CSV rows
+    const csvRows = [csvHeaders.join(',')]; // Header row
+    
+    allDates.forEach(date => {
+      const dayData = dailyEntries[date] || {};
+      const row = [date];
+      
+      categories.forEach(category => {
+        category.activities.forEach(activity => {
+          const key = `${category.id}_${activity.id}`;
+          let value = dayData[key];
+          
+          // Format different value types for CSV
+          if (value === undefined || value === null) {
+            value = '';
+          } else if (typeof value === 'boolean') {
+            value = value ? 'Yes' : 'No';
+          } else if (typeof value === 'object' && value.enabled !== undefined) {
+            // Handle toggleWithText format
+            value = value.enabled ? `Yes: ${value.text || ''}` : 'No';
+          } else if (typeof value === 'string') {
+            // Escape commas and quotes in text
+            value = `"${value.replace(/"/g, '""')}"`;
+          }
+          
+          row.push(value);
+        });
+      });
+      
+      csvRows.push(row.join(','));
+    });
+    
+    // Create and download the file
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `lifetracker-data-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const getHistoryData = (timeRange = 7) => {
+    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    const selectedDays = dates.slice(-timeRange);
+    
+    const historyByCategory = {};
+    
+    categories.forEach(category => {
+      const categoryData = [];
+      
+      category.activities.forEach(activity => {
+        const activityData = selectedDays.map(date => {
+          const dayData = dailyEntries[date] || {};
+          const key = `${category.id}_${activity.id}`;
+          let value = dayData[key];
+          
+          // Convert different value types to numbers for charting
+          if (typeof value === 'boolean') {
+            value = value ? 1 : 0;
+          } else if (typeof value === 'string' && value !== '') {
+            value = 1; // For dropdown/text selections, count as 1 if selected
+          } else if (typeof value !== 'number') {
+            value = 0;
+          }
+          // If value is already a number, keep it as is
+          
+          return {
+            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            fullDate: date,
+            value: value
+          };
+        });
+        
+        categoryData.push({
+          activityName: activity.name,
+          activityId: activity.id,
+          inputType: activity.inputType,
+          data: activityData
+        });
+      });
+      
+      historyByCategory[category.id] = {
+        name: category.name,
+        icon: category.icon,
+        activities: categoryData
+      };
+    });
+    
+    return historyByCategory;
+  };
+
+  const getGymActivitiesData = (timeRange = 7) => {
+    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    const selectedDays = timeRange === 'all' ? dates : dates.slice(-timeRange);
+    
+    const gymCategory = categories.find(cat => cat.id === 'gym');
+    if (!gymCategory) return [];
+    
+    const gymActivities = [];
+    
+    gymCategory.activities.forEach((activity, activityIndex) => {
+      const activityData = selectedDays.map(date => {
+        const dayData = dailyEntries[date] || {};
+        const key = `${gymCategory.id}_${activity.id}`;
+        let value = dayData[key];
+        
+        // Gym activities should be numeric (0-4)
+        if (typeof value !== 'number') {
+          value = 0;
+        }
+        
+        return {
+          date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          fullDate: date,
+          value: value
+        };
+      });
+      
+      // Different shades of blue for gym activities
+      const blueShades = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd'];
+      
+      gymActivities.push({
+        activityName: activity.name,
+        fullName: activity.name,
+        data: activityData,
+        color: blueShades[activityIndex % blueShades.length],
+        categoryId: gymCategory.id
+      });
+    });
+    
+    return gymActivities;
+  };
+
+  const getBinaryActivitiesData = (timeRange = 7) => {
+    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    const selectedDays = timeRange === 'all' ? dates : dates.slice(-timeRange);
+    
+    const binaryCategories = categories.filter(cat => cat.id !== 'gym');
+    const allBinaryActivities = [];
+    
+    binaryCategories.forEach(category => {
+      category.activities.forEach(activity => {
+        allBinaryActivities.push({
+          categoryName: category.name,
+          activityName: activity.name,
+          fullName: `${category.name}: ${activity.name}`,
+          categoryId: category.id,
+          activityId: activity.id,
+          color: getCategoryColor(category.id)
+        });
+      });
+    });
+    
+    const dailyData = selectedDays.map(date => {
+      const dayData = dailyEntries[date] || {};
+      const completedActivities = [];
+      let totalCompleted = 0;
+      
+      allBinaryActivities.forEach(activity => {
+        const key = `${activity.categoryId}_${activity.activityId}`;
+        let value = dayData[key];
+        
+        // Convert to binary
+        let isCompleted = false;
+        if (typeof value === 'boolean') {
+          isCompleted = value;
+        } else if (typeof value === 'object' && value.enabled !== undefined) {
+          isCompleted = value.enabled;
+        } else if (typeof value === 'string' && value !== '') {
+          isCompleted = true;
+        } else if (typeof value === 'number' && value > 0) {
+          isCompleted = true;
+        }
+        
+        if (isCompleted) {
+          completedActivities.push(activity);
+          totalCompleted++;
+        }
+      });
+      
+      return {
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        fullDate: date,
+        completedActivities,
+        totalCompleted,
+        completionRate: allBinaryActivities.length > 0 ? (totalCompleted / allBinaryActivities.length) * 100 : 0
+      };
+    });
+    
+    return { dailyData, allBinaryActivities };
+  };
+
+  const renderNudgeBanner = () => {
+    if (!showNudge) return null;
+    
+    const { completionRate, completedActivities, totalActivities } = checkForNudge();
+    
+    return (
+      <div className="nudge-banner">
+        <div className="nudge-content">
+          <div className="nudge-text">
+            <strong>Keep it up!</strong> You've completed {completedActivities} of {totalActivities} activities today ({Math.round(completionRate)}%)
+          </div>
+          <button 
+            onClick={() => setShowNudge(false)}
+            className="nudge-dismiss"
+          >
+            ×
+          </button>
+        </div>
+        <div className="nudge-progress">
+          <div 
+            className="nudge-progress-bar" 
+            style={{ width: `${completionRate}%` }}
+          ></div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderHistoryView = () => {
+    const historyData = getHistoryData(timeRange);
+    
+    if (Object.keys(dailyEntries).length === 0) {
+      return (
+        <div className="history-empty">
+          <h3>No data yet</h3>
+          <p>Start tracking activities to see your progress here!</p>
+        </div>
+      );
+    }
+
+    return (
