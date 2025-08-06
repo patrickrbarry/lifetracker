@@ -20,6 +20,9 @@ const Lifetracker = () => {
   const [newReadingLabel, setNewReadingLabel] = useState('');
   const [timeRange, setTimeRange] = useState(7);
   const [dashboardTab, setDashboardTab] = useState('gym');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState('20:00');
+  const [showNudge, setShowNudge] = useState(false);
 
   // Category icons mapping
   const categoryIcons = {
@@ -170,6 +173,8 @@ const Lifetracker = () => {
 
   useEffect(() => {
     loadStoredData();
+    checkNotificationPermission();
+    checkForNudge();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -207,6 +212,127 @@ const Lifetracker = () => {
     }
   };
 
+  // Notification and nudge functions
+  const checkNotificationPermission = () => {
+    if ('Notification' in window) {
+      const permission = Notification.permission;
+      setNotificationsEnabled(permission === 'granted');
+      
+      // Load saved reminder time
+      const savedTime = getFromStorage('reminderTime');
+      if (savedTime) {
+        setReminderTime(savedTime);
+      }
+    }
+  };
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        setNotificationsEnabled(permission === 'granted');
+        
+        if (permission === 'granted') {
+          scheduleNotifications();
+        }
+      } catch (error) {
+        console.error('Error requesting notification permission:', error);
+      }
+    }
+  };
+
+  const scheduleNotifications = () => {
+    if (!notificationsEnabled) return;
+
+    // Clear existing notifications
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.getNotifications().then(notifications => {
+          notifications.forEach(notification => notification.close());
+        });
+      });
+    }
+
+    // Schedule daily notification
+    const now = new Date();
+    const [hours, minutes] = reminderTime.split(':');
+    const scheduledTime = new Date();
+    scheduledTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+    // If time has passed today, schedule for tomorrow
+    if (scheduledTime <= now) {
+      scheduledTime.setDate(scheduledTime.getDate() + 1);
+    }
+
+    const timeUntilNotification = scheduledTime.getTime() - now.getTime();
+
+    setTimeout(() => {
+      if (notificationsEnabled) {
+        new Notification('Lifetracker Reminder', {
+          body: 'Time to log your daily activities!',
+          icon: '/lifetracker-icon-192.png',
+          badge: '/lifetracker-icon-192.png',
+          tag: 'daily-reminder'
+        });
+      }
+      
+      // Schedule next day
+      scheduleNotifications();
+    }, timeUntilNotification);
+  };
+
+  const checkForNudge = () => {
+    const today = new Date().toDateString();
+    const todayEntries = dailyEntries[today] || {};
+    
+    // Count total possible activities (excluding gym as they can be 0)
+    let totalActivities = 0;
+    let completedActivities = 0;
+
+    categories.forEach(category => {
+      category.activities.forEach(activity => {
+        totalActivities++;
+        const key = `${category.id}_${activity.id}`;
+        const value = todayEntries[key];
+        
+        // Check if activity is completed
+        let isCompleted = false;
+        if (category.id === 'gym') {
+          // For gym, count as completed if > 0
+          isCompleted = typeof value === 'number' && value > 0;
+        } else if (typeof value === 'boolean') {
+          isCompleted = value;
+        } else if (typeof value === 'object' && value?.enabled) {
+          isCompleted = true;
+        } else if (typeof value === 'string' && value !== '') {
+          isCompleted = true;
+        } else if (typeof value === 'number' && value > 0) {
+          isCompleted = true;
+        }
+        
+        if (isCompleted) completedActivities++;
+      });
+    });
+
+    const completionRate = totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
+    
+    // Show nudge if completion rate is low and it's evening
+    const currentHour = new Date().getHours();
+    const shouldShowNudge = completionRate < 50 && currentHour >= 18 && currentHour <= 23;
+    
+    setShowNudge(shouldShowNudge);
+    
+    return { completionRate, completedActivities, totalActivities };
+  };
+
+  const updateReminderTime = (newTime) => {
+    setReminderTime(newTime);
+    saveToStorage('reminderTime', newTime);
+    if (notificationsEnabled) {
+      scheduleNotifications();
+    }
+  };
+
   const getCurrentDateEntry = () => {
     return dailyEntries[currentDate] || {};
   };
@@ -219,6 +345,9 @@ const Lifetracker = () => {
         [`${categoryId}_${activityId}`]: value
       }
     }));
+    
+    // Check for nudge updates when data changes
+    setTimeout(checkForNudge, 100);
   };
 
   const toggleCategory = (categoryId) => {
@@ -775,7 +904,33 @@ const Lifetracker = () => {
     );
   };
 
-  const renderDashboardView = () => {
+  const renderNudgeBanner = () => {
+    if (!showNudge) return null;
+    
+    const { completionRate, completedActivities, totalActivities } = checkForNudge();
+    
+    return (
+      <div className="nudge-banner">
+        <div className="nudge-content">
+          <div className="nudge-text">
+            <strong>Keep it up!</strong> You've completed {completedActivities} of {totalActivities} activities today ({Math.round(completionRate)}%)
+          </div>
+          <button 
+            onClick={() => setShowNudge(false)}
+            className="nudge-dismiss"
+          >
+            ×
+          </button>
+        </div>
+        <div className="nudge-progress">
+          <div 
+            className="nudge-progress-bar" 
+            style={{ width: `${completionRate}%` }}
+          ></div>
+        </div>
+      </div>
+    );
+  };
     if (Object.keys(dailyEntries).length === 0) {
       return (
         <div className="dashboard-empty">
@@ -1273,6 +1428,41 @@ const Lifetracker = () => {
 
         <div className="settings-content">
           <div className="settings-card">
+            <h3>Notifications & Reminders</h3>
+            
+            <div className="notification-section">
+              <div className="notification-status">
+                <span className="notification-label">
+                  Daily Reminders: {notificationsEnabled ? '✅ Enabled' : '❌ Disabled'}
+                </span>
+                {!notificationsEnabled && (
+                  <button 
+                    onClick={requestNotificationPermission}
+                    className="primary-button"
+                  >
+                    Enable Notifications
+                  </button>
+                )}
+              </div>
+              
+              {notificationsEnabled && (
+                <div className="reminder-time-section">
+                  <label className="reminder-label">Reminder Time:</label>
+                  <input
+                    type="time"
+                    value={reminderTime}
+                    onChange={(e) => updateReminderTime(e.target.value)}
+                    className="time-input"
+                  />
+                  <small className="reminder-note">
+                    We'll send you a daily reminder to log your activities
+                  </small>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-card">
             <h3>Categories & Activities</h3>
             
             <button 
@@ -1385,6 +1575,8 @@ const Lifetracker = () => {
           </button>
         </div>
       </div>
+
+      {renderNudgeBanner()}
 
       <div className="date-selector">
         <input
