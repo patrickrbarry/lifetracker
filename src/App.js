@@ -37,6 +37,22 @@ const Lifetracker = () => {
       const storedEntries = getFromStorage('dailyEntries');
       
       if (storedCategories && storedCategories.length > 0) {
+        // Check if Entertainment category exists, add it if missing
+        const hasEntertainment = storedCategories.some(cat => cat.id === 'entertainment');
+        if (!hasEntertainment) {
+          const entertainmentCategory = {
+            id: 'entertainment',
+            name: 'Entertainment',
+            icon: 'entertainment',
+            activities: [
+              { id: 'livemusic', name: 'Live Music', inputType: 'toggleWithText', parameters: {} },
+              { id: 'movies', name: 'Movies', inputType: 'toggleWithText', parameters: {} },
+              { id: 'art', name: 'Art', inputType: 'toggleWithText', parameters: {} }
+            ]
+          };
+          storedCategories.push(entertainmentCategory);
+          saveToStorage('categories', storedCategories); // Save the updated categories
+        }
         setCategories(storedCategories);
       } else {
         const initialCategories = [
