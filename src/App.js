@@ -1265,6 +1265,8 @@ const Lifetracker = () => {
 };
 
 export default Lifetracker;
+
+export default Lifetracker;
           <div className="number-input">
             <span className="number-label">Sets: {activity.parameters.min || 0}-{activity.parameters.max || 10}</span>
             <input
