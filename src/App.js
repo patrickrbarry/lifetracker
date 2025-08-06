@@ -51,9 +51,19 @@ const Lifetracker = () => {
             ]
           };
           storedCategories.push(entertainmentCategory);
-          saveToStorage('categories', storedCategories); // Save the updated categories
         }
-        setCategories(storedCategories);
+        
+        // Remove old "Music" category that's now duplicative
+        const filteredCategories = storedCategories.filter(cat => 
+          cat.id !== 'music' && cat.name.toLowerCase() !== 'music'
+        );
+        
+        // Save if we made any changes
+        if (filteredCategories.length !== storedCategories.length || !hasEntertainment) {
+          saveToStorage('categories', filteredCategories);
+        }
+        
+        setCategories(filteredCategories);
       } else {
         const initialCategories = [
           {
