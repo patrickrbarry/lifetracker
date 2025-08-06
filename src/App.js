@@ -499,6 +499,11 @@ const Lifetracker = () => {
     }
   };
 
+  const getCategoryIcon = (iconName) => {
+    const IconComponent = categoryIcons[iconName];
+    return IconComponent ? <IconComponent size={24} /> : null;
+  };
+
   const getCategoryColor = (categoryId) => {
     const colorMap = {
       gym: '#2563eb',        // Blue family
