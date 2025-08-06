@@ -19,6 +19,7 @@ const Lifetracker = () => {
   });
   const [newReadingLabel, setNewReadingLabel] = useState('');
   const [timeRange, setTimeRange] = useState(7);
+  const [dashboardTab, setDashboardTab] = useState('gym');
 
   // Category icons mapping
   const categoryIcons = {
@@ -560,63 +561,105 @@ const Lifetracker = () => {
     return historyByCategory;
   };
 
-  const getAllActivitiesData = (timeRange = 7) => {
+  const getGymActivitiesData = (timeRange = 7) => {
     const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
     const selectedDays = timeRange === 'all' ? dates : dates.slice(-timeRange);
     
-    const allActivities = [];
-    let colorIndex = 0;
+    const gymCategory = categories.find(cat => cat.id === 'gym');
+    if (!gymCategory) return [];
     
-    categories.forEach(category => {
-      const baseColor = getCategoryColor(category.id);
+    const gymActivities = [];
+    
+    gymCategory.activities.forEach((activity, activityIndex) => {
+      const activityData = selectedDays.map(date => {
+        const dayData = dailyEntries[date] || {};
+        const key = `${gymCategory.id}_${activity.id}`;
+        let value = dayData[key];
+        
+        // Gym activities should be numeric (0-4)
+        if (typeof value !== 'number') {
+          value = 0;
+        }
+        
+        return {
+          date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          fullDate: date,
+          value: value
+        };
+      });
       
-      category.activities.forEach((activity, activityIndex) => {
-        const activityData = selectedDays.map(date => {
-          const dayData = dailyEntries[date] || {};
-          const key = `${category.id}_${activity.id}`;
-          let value = dayData[key];
-          
-          // Convert different value types to numbers for charting
-          if (typeof value === 'boolean') {
-            value = value ? 1 : 0;
-          } else if (typeof value === 'object' && value.enabled !== undefined) {
-            value = value.enabled ? 1 : 0;
-          } else if (typeof value === 'string' && value !== '') {
-            value = 1;
-          } else if (typeof value !== 'number') {
-            value = 0;
-          }
-          
-          return {
-            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            fullDate: date,
-            value: value
-          };
-        });
-        
-        // Create variations of the base color for multiple activities in same category
-        const colorVariations = [
-          baseColor,
-          baseColor + '99', // Add transparency
-          baseColor.replace(')', ', 0.7)').replace('rgb', 'rgba'), // More transparent
-        ];
-        
-        allActivities.push({
-          categoryName: category.name,
-          activityName: activity.name,
-          fullName: `${category.name}: ${activity.name}`,
-          data: activityData,
-          color: activityIndex < colorVariations.length ? 
-                 baseColor : 
-                 `hsl(${(colorIndex * 137.5) % 360}, 70%, 50%)`, // Fallback to HSL
-          categoryId: category.id
-        });
-        
-        colorIndex++;
+      // Different shades of blue for gym activities
+      const blueShades = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd'];
+      
+      gymActivities.push({
+        activityName: activity.name,
+        fullName: activity.name,
+        data: activityData,
+        color: blueShades[activityIndex % blueShades.length],
+        categoryId: gymCategory.id
       });
     });
     
-    return allActivities;
+    return gymActivities;
+  };
+
+  const getBinaryActivitiesData = (timeRange = 7) => {
+    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    const selectedDays = timeRange === 'all' ? dates : dates.slice(-timeRange);
+    
+    const binaryCategories = categories.filter(cat => cat.id !== 'gym');
+    const allBinaryActivities = [];
+    
+    binaryCategories.forEach(category => {
+      category.activities.forEach(activity => {
+        allBinaryActivities.push({
+          categoryName: category.name,
+          activityName: activity.name,
+          fullName: `${category.name}: ${activity.name}`,
+          categoryId: category.id,
+          activityId: activity.id,
+          color: getCategoryColor(category.id)
+        });
+      });
+    });
+    
+    const dailyData = selectedDays.map(date => {
+      const dayData = dailyEntries[date] || {};
+      const completedActivities = [];
+      let totalCompleted = 0;
+      
+      allBinaryActivities.forEach(activity => {
+        const key = `${activity.categoryId}_${activity.activityId}`;
+        let value = dayData[key];
+        
+        // Convert to binary
+        let isCompleted = false;
+        if (typeof value === 'boolean') {
+          isCompleted = value;
+        } else if (typeof value === 'object' && value.enabled !== undefined) {
+          isCompleted = value.enabled;
+        } else if (typeof value === 'string' && value !== '') {
+          isCompleted = true;
+        } else if (typeof value === 'number' && value > 0) {
+          isCompleted = true;
+        }
+        
+        if (isCompleted) {
+          completedActivities.push(activity);
+          totalCompleted++;
+        }
+      });
+      
+      return {
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        fullDate: date,
+        completedActivities,
+        totalCompleted,
+        completionRate: allBinaryActivities.length > 0 ? (totalCompleted / allBinaryActivities.length) * 100 : 0
+      };
+    });
+    
+    return { dailyData, allBinaryActivities };
   };
 
   const renderHistoryView = () => {
@@ -733,27 +776,33 @@ const Lifetracker = () => {
   };
 
   const renderDashboardView = () => {
-    const allActivitiesData = getAllActivitiesData(timeRange);
-    
-    if (allActivitiesData.length === 0 || Object.keys(dailyEntries).length === 0) {
+    if (Object.keys(dailyEntries).length === 0) {
       return (
         <div className="dashboard-empty">
           <h3>No data yet</h3>
-          <p>Start tracking activities to see your unified dashboard!</p>
+          <p>Start tracking activities to see your dashboard!</p>
         </div>
       );
     }
-
-    // Get the date range for x-axis
-    const dateRange = allActivitiesData[0]?.data || [];
-    const maxValue = Math.max(...allActivitiesData.flatMap(activity => 
-      activity.data.map(d => d.value)
-    ), 1);
 
     return (
       <div className="dashboard-container">
         <div className="dashboard-header">
           <h2 className="dashboard-title">Activity Dashboard</h2>
+          <div className="dashboard-tabs">
+            <button 
+              onClick={() => setDashboardTab('gym')} 
+              className={`dashboard-tab ${dashboardTab === 'gym' ? 'active' : ''}`}
+            >
+              Gym Progress
+            </button>
+            <button 
+              onClick={() => setDashboardTab('activities')} 
+              className={`dashboard-tab ${dashboardTab === 'activities' ? 'active' : ''}`}
+            >
+              Activity Completion
+            </button>
+          </div>
           <div className="time-range-selector">
             <button 
               onClick={() => setTimeRange(7)} 
@@ -782,112 +831,354 @@ const Lifetracker = () => {
           </div>
         </div>
 
-        <div className="unified-chart-container">
-          <div className="chart-main">
-            <svg width="100%" height="400" viewBox="0 0 800 400" className="unified-chart">
-              {/* Background */}
-              <rect width="800" height="400" fill="#f8f9fa" rx="8"/>
+        {dashboardTab === 'gym' ? renderGymDashboard() : renderActivitiesDashboard()}
+      </div>
+    );
+  };
+
+  const renderGymDashboard = () => {
+    const gymData = getGymActivitiesData(timeRange);
+    
+    if (gymData.length === 0) {
+      return (
+        <div className="dashboard-empty">
+          <h3>No gym data yet</h3>
+          <p>Start tracking your gym activities!</p>
+        </div>
+      );
+    }
+
+    const dateRange = gymData[0]?.data || [];
+    const maxValue = 4; // Gym activities are 0-4 sets
+
+    return (
+      <div className="unified-chart-container">
+        <div className="chart-main">
+          <svg width="100%" height="400" viewBox="0 0 800 400" className="unified-chart">
+            {/* Background */}
+            <rect width="800" height="400" fill="#f8f9fa" rx="8"/>
+            
+            {/* Grid lines */}
+            {[...Array(6)].map((_, i) => (
+              <g key={i}>
+                <line
+                  x1="60"
+                  y1={60 + (i * 50)}
+                  x2="740"
+                  y2={60 + (i * 50)}
+                  stroke="#e5e7eb"
+                  strokeWidth="1"
+                />
+              </g>
+            ))}
+            
+            {/* Y-axis labels */}
+            {[...Array(6)].map((_, i) => (
+              <text
+                key={i}
+                x="45"
+                y={65 + (i * 50)}
+                textAnchor="end"
+                fontSize="12"
+                fill="#6b7280"
+              >
+                {4 - i}
+              </text>
+            ))}
+            
+            <text
+              x="25"
+              y="200"
+              textAnchor="middle"
+              fontSize="12"
+              fill="#6b7280"
+              transform="rotate(-90 25 200)"
+            >
+              Sets
+            </text>
+            
+            {/* X-axis labels */}
+            {dateRange.map((datePoint, i) => {
+              if (i % Math.max(1, Math.floor(dateRange.length / 8)) === 0) {
+                return (
+                  <text
+                    key={i}
+                    x={60 + (i / (dateRange.length - 1)) * 680}
+                    y="385"
+                    textAnchor="middle"
+                    fontSize="12"
+                    fill="#6b7280"
+                  >
+                    {datePoint.date}
+                  </text>
+                );
+              }
+              return null;
+            })}
+            
+            {/* Activity lines */}
+            {gymData.map((activity, activityIndex) => {
+              if (activity.data.length > 1) {
+                const points = activity.data.map((d, i) => ({
+                  x: 60 + (i / (activity.data.length - 1)) * 680,
+                  y: 310 - (d.value / maxValue) * 250
+                }));
+                
+                const pathData = points.map((p, i) => 
+                  i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+                ).join(' ');
+                
+                return (
+                  <g key={activityIndex}>
+                    <path 
+                      d={pathData} 
+                      stroke={activity.color} 
+                      strokeWidth="3" 
+                      fill="none"
+                      opacity="0.9"
+                    />
+                    {points.map((p, i) => (
+                      <circle
+                        key={i}
+                        cx={p.x}
+                        cy={p.y}
+                        r="4"
+                        fill={activity.color}
+                        stroke="white"
+                        strokeWidth="2"
+                      />
+                    ))}
+                  </g>
+                );
+              }
+              return null;
+            })}
+          </svg>
+        </div>
+        
+        <div className="chart-legend">
+          <h4>Gym Activities</h4>
+          <div className="legend-items">
+            {gymData.map((activity, index) => (
+              <div key={index} className="legend-item">
+                <div 
+                  className="legend-color" 
+                  style={{ backgroundColor: activity.color }}
+                ></div>
+                <span className="legend-text">{activity.fullName}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderActivitiesDashboard = () => {
+    const { dailyData, allBinaryActivities } = getBinaryActivitiesData(timeRange);
+    
+    if (dailyData.length === 0) {
+      return (
+        <div className="dashboard-empty">
+          <h3>No activity data yet</h3>
+          <p>Start tracking your daily activities!</p>
+        </div>
+      );
+    }
+
+    const maxActivities = allBinaryActivities.length;
+
+    return (
+      <div className="unified-chart-container">
+        <div className="chart-main">
+          <svg width="100%" height="500" viewBox="0 0 800 500" className="unified-chart">
+            {/* Background */}
+            <rect width="800" height="500" fill="#f8f9fa" rx="8"/>
+            
+            {/* Completion Rate Line Chart (Top Section) */}
+            <text x="400" y="25" textAnchor="middle" fontSize="14" fill="#374151" fontWeight="600">
+              Daily Completion Rate
+            </text>
+            
+            {/* Completion rate grid lines */}
+            {[...Array(6)].map((_, i) => (
+              <line
+                key={i}
+                x1="60"
+                y1={40 + (i * 20)}
+                x2="740"
+                y2={40 + (i * 20)}
+                stroke="#e5e7eb"
+                strokeWidth="1"
+              />
+            ))}
+            
+            {/* Completion rate Y-axis labels */}
+            {[...Array(6)].map((_, i) => (
+              <text
+                key={i}
+                x="45"
+                y={45 + (i * 20)}
+                textAnchor="end"
+                fontSize="10"
+                fill="#6b7280"
+              >
+                {100 - (i * 20)}%
+              </text>
+            ))}
+            
+            {/* Completion rate line */}
+            {dailyData.length > 1 && (() => {
+              const points = dailyData.map((d, i) => ({
+                x: 60 + (i / (dailyData.length - 1)) * 680,
+                y: 140 - (d.completionRate / 100) * 100
+              }));
               
-              {/* Grid lines */}
-              {[...Array(6)].map((_, i) => (
-                <g key={i}>
-                  <line
-                    x1="60"
-                    y1={60 + (i * 50)}
-                    x2="740"
-                    y2={60 + (i * 50)}
-                    stroke="#e5e7eb"
-                    strokeWidth="1"
+              const pathData = points.map((p, i) => 
+                i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+              ).join(' ');
+              
+              return (
+                <g>
+                  <path 
+                    d={pathData} 
+                    stroke="#10b981" 
+                    strokeWidth="3" 
+                    fill="none"
                   />
-                </g>
-              ))}
-              
-              {/* Y-axis labels */}
-              {[...Array(6)].map((_, i) => (
-                <text
-                  key={i}
-                  x="45"
-                  y={65 + (i * 50)}
-                  textAnchor="end"
-                  fontSize="12"
-                  fill="#6b7280"
-                >
-                  {Math.round(maxValue - (i * maxValue / 5))}
-                </text>
-              ))}
-              
-              {/* X-axis labels */}
-              {dateRange.map((datePoint, i) => {
-                if (i % Math.max(1, Math.floor(dateRange.length / 8)) === 0) {
-                  return (
-                    <text
+                  {points.map((p, i) => (
+                    <circle
                       key={i}
-                      x={60 + (i / (dateRange.length - 1)) * 680}
-                      y="385"
-                      textAnchor="middle"
-                      fontSize="12"
-                      fill="#6b7280"
-                    >
-                      {datePoint.date}
-                    </text>
-                  );
-                }
-                return null;
-              })}
+                      cx={p.x}
+                      cy={p.y}
+                      r="3"
+                      fill="#10b981"
+                      stroke="white"
+                      strokeWidth="1"
+                    />
+                  ))}
+                </g>
+              );
+            })()}
+            
+            {/* Stacked Bars Section */}
+            <text x="400" y="180" textAnchor="middle" fontSize="14" fill="#374151" fontWeight="600">
+              Daily Activity Breakdown
+            </text>
+            
+            {/* Bar chart grid lines */}
+            {[...Array(Math.ceil(maxActivities / 5) + 1)].map((_, i) => (
+              <line
+                key={i}
+                x1="60"
+                y1={460 - (i * 40)}
+                x2="740"
+                y2={460 - (i * 40)}
+                stroke="#e5e7eb"
+                strokeWidth="1"
+              />
+            ))}
+            
+            {/* Bar chart Y-axis labels */}
+            {[...Array(Math.ceil(maxActivities / 5) + 1)].map((_, i) => (
+              <text
+                key={i}
+                x="45"
+                y={465 - (i * 40)}
+                textAnchor="end"
+                fontSize="10"
+                fill="#6b7280"
+              >
+                {i * 5}
+              </text>
+            ))}
+            
+            <text
+              x="25"
+              y="350"
+              textAnchor="middle"
+              fontSize="12"
+              fill="#6b7280"
+              transform="rotate(-90 25 350)"
+            >
+              Activities Completed
+            </text>
+            
+            {/* X-axis labels */}
+            {dailyData.map((dayData, i) => {
+              if (i % Math.max(1, Math.floor(dailyData.length / 8)) === 0) {
+                return (
+                  <text
+                    key={i}
+                    x={60 + (i / (dailyData.length - 1)) * 680}
+                    y="485"
+                    textAnchor="middle"
+                    fontSize="12"
+                    fill="#6b7280"
+                  >
+                    {dayData.date}
+                  </text>
+                );
+              }
+              return null;
+            })}
+            
+            {/* Stacked bars */}
+            {dailyData.map((dayData, dayIndex) => {
+              const barWidth = Math.max(8, 680 / dailyData.length - 2);
+              const barX = 60 + (dayIndex / (dailyData.length - 1)) * 680 - barWidth/2;
               
-              {/* Activity lines */}
-              {allActivitiesData.map((activity, activityIndex) => {
-                if (activity.data.length > 1) {
-                  const points = activity.data.map((d, i) => ({
-                    x: 60 + (i / (activity.data.length - 1)) * 680,
-                    y: 310 - (d.value / maxValue) * 250
-                  }));
+              let currentY = 460;
+              const segmentHeight = dayData.totalCompleted > 0 ? Math.min(200, (dayData.totalCompleted / maxActivities) * 200) : 0;
+              
+              return (
+                <g key={dayIndex}>
+                  {/* Background bar */}
+                  <rect
+                    x={barX}
+                    y={460 - segmentHeight}
+                    width={barWidth}
+                    height={segmentHeight}
+                    fill="#e5e7eb"
+                    rx="2"
+                  />
                   
-                  const pathData = points.map((p, i) => 
-                    i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
-                  ).join(' ');
-                  
-                  return (
-                    <g key={activityIndex}>
-                      <path 
-                        d={pathData} 
-                        stroke={activity.color} 
-                        strokeWidth="2.5" 
-                        fill="none"
+                  {/* Colored segments for completed activities */}
+                  {dayData.completedActivities.map((activity, actIndex) => {
+                    const segHeight = segmentHeight / dayData.totalCompleted;
+                    const segY = currentY - segHeight;
+                    currentY = segY;
+                    
+                    return (
+                      <rect
+                        key={actIndex}
+                        x={barX}
+                        y={segY}
+                        width={barWidth}
+                        height={segHeight}
+                        fill={activity.color}
                         opacity="0.8"
                       />
-                      {points.map((p, i) => (
-                        <circle
-                          key={i}
-                          cx={p.x}
-                          cy={p.y}
-                          r="3"
-                          fill={activity.color}
-                          stroke="white"
-                          strokeWidth="1"
-                        />
-                      ))}
-                    </g>
-                  );
-                }
-                return null;
-              })}
-            </svg>
-          </div>
-          
-          <div className="chart-legend">
-            <h4>Activities</h4>
-            <div className="legend-items">
-              {allActivitiesData.map((activity, index) => (
-                <div key={index} className="legend-item">
-                  <div 
-                    className="legend-color" 
-                    style={{ backgroundColor: activity.color }}
-                  ></div>
-                  <span className="legend-text">{activity.fullName}</span>
-                </div>
-              ))}
-            </div>
+                    );
+                  })}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        
+        <div className="chart-legend">
+          <h4>Activities</h4>
+          <div className="legend-items">
+            {allBinaryActivities.map((activity, index) => (
+              <div key={index} className="legend-item">
+                <div 
+                  className="legend-color" 
+                  style={{ backgroundColor: activity.color }}
+                ></div>
+                <span className="legend-text">{activity.fullName}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
