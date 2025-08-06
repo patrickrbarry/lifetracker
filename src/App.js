@@ -27,7 +27,8 @@ const Lifetracker = () => {
     intake: Pill,
     games: Gamepad2,
     reading: BookOpen,
-    social: Users
+    social: Users,
+    entertainment: BarChart3
   };
 
   const loadStoredData = () => {
@@ -98,6 +99,16 @@ const Lifetracker = () => {
               { id: 'friends', name: 'Friends', inputType: 'checkbox', parameters: {} },
               { id: 'family', name: 'Family', inputType: 'checkbox', parameters: {} },
               { id: 'work', name: 'Work', inputType: 'checkbox', parameters: {} }
+            ]
+          },
+          {
+            id: 'entertainment',
+            name: 'Entertainment',
+            icon: 'entertainment',
+            activities: [
+              { id: 'livemusic', name: 'Live Music', inputType: 'toggleWithText', parameters: {} },
+              { id: 'movies', name: 'Movies', inputType: 'toggleWithText', parameters: {} },
+              { id: 'art', name: 'Art', inputType: 'toggleWithText', parameters: {} }
             ]
           }
         ];
@@ -347,6 +358,40 @@ const Lifetracker = () => {
             </div>
           </div>
         );
+
+      case 'toggleWithText':
+        const toggleValue = currentValue && typeof currentValue === 'object' ? currentValue.enabled : false;
+        const textValue = currentValue && typeof currentValue === 'object' ? currentValue.text : '';
+        
+        return (
+          <div className="toggle-with-text-container">
+            <button
+              onClick={() => {
+                const newValue = {
+                  enabled: !toggleValue,
+                  text: textValue
+                };
+                updateDailyEntry(category.id, activity.id, newValue);
+              }}
+              className={`toggle-button ${toggleValue ? 'active' : ''}`}
+            >
+              {toggleValue ? 'YES' : 'NO'}
+            </button>
+            <input
+              type="text"
+              placeholder={`${activity.name} details...`}
+              value={textValue}
+              onChange={(e) => {
+                const newValue = {
+                  enabled: toggleValue,
+                  text: e.target.value
+                };
+                updateDailyEntry(category.id, activity.id, newValue);
+              }}
+              className="toggle-text-input"
+            />
+          </div>
+        );
       
       default:
         return <span>Unknown input type</span>;
@@ -357,6 +402,68 @@ const Lifetracker = () => {
     saveToStorage('categories', categories);
     saveToStorage('dailyEntries', dailyEntries);
     alert('Data saved successfully!');
+  };
+
+  const exportToCSV = () => {
+    // Create CSV header
+    const allActivities = [];
+    categories.forEach(category => {
+      category.activities.forEach(activity => {
+        allActivities.push(`${category.name}: ${activity.name}`);
+      });
+    });
+    
+    const csvHeaders = ['Date', ...allActivities];
+    
+    // Get all dates and sort them
+    const allDates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    
+    // Create CSV rows
+    const csvRows = [csvHeaders.join(',')]; // Header row
+    
+    allDates.forEach(date => {
+      const dayData = dailyEntries[date] || {};
+      const row = [date];
+      
+      categories.forEach(category => {
+        category.activities.forEach(activity => {
+          const key = `${category.id}_${activity.id}`;
+          let value = dayData[key];
+          
+          // Format different value types for CSV
+          if (value === undefined || value === null) {
+            value = '';
+          } else if (typeof value === 'boolean') {
+            value = value ? 'Yes' : 'No';
+          } else if (typeof value === 'object' && value.enabled !== undefined) {
+            // Handle toggleWithText format
+            value = value.enabled ? `Yes: ${value.text || ''}` : 'No';
+          } else if (typeof value === 'string') {
+            // Escape commas and quotes in text
+            value = `"${value.replace(/"/g, '""')}"`;
+          }
+          
+          row.push(value);
+        });
+      });
+      
+      csvRows.push(row.join(','));
+    });
+    
+    // Create and download the file
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `lifetracker-data-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   const getCategoryIcon = (iconName) => {
@@ -635,6 +742,7 @@ const Lifetracker = () => {
                   <option value="numberPicker">Number Picker (0-4)</option>
                   <option value="radio">Radio Buttons</option>
                   <option value="dropdown">Dropdown</option>
+                  <option value="toggleWithText">Toggle with Text</option>
                   <option value="learningDropdown">Learning Dropdown</option>
                 </select>
 
@@ -671,10 +779,13 @@ const Lifetracker = () => {
       <div className="app-header">
         <h1 className="app-title">Lifetracker</h1>
         <div className="header-buttons">
-          <button onClick={saveAllData} className="header-button">
+          <button onClick={exportToCSV} className="header-button" title="Export Data">
+            <Calendar size={20} />
+          </button>
+          <button onClick={saveAllData} className="header-button" title="Save Data">
             <Save size={20} />
           </button>
-          <button onClick={() => setCurrentView('settings')} className="header-button">
+          <button onClick={() => setCurrentView('settings')} className="header-button" title="Settings">
             <Settings size={20} />
           </button>
         </div>
@@ -683,8 +794,19 @@ const Lifetracker = () => {
       <div className="date-selector">
         <input
           type="date"
-          value={new Date(currentDate).toISOString().split('T')[0]}
-          onChange={(e) => setCurrentDate(new Date(e.target.value).toDateString())}
+          value={(() => {
+            // Fix timezone issue by ensuring we get the local date
+            const date = new Date(currentDate);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          })()}
+          onChange={(e) => {
+            // Fix timezone issue by creating date in local timezone
+            const selectedDate = new Date(e.target.value + 'T00:00:00');
+            setCurrentDate(selectedDate.toDateString());
+          }}
           className="date-input"
         />
       </div>

@@ -371,6 +371,36 @@
   background: #1d4ed8;
 }
 
+/* Toggle with text styles */
+.toggle-with-text-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.toggle-text-input {
+  flex: 1;
+  min-width: 150px;
+  padding: 0.75rem;
+  border: 2px solid #e9ecef;
+  border-radius: 0.75rem;
+  background: #f8f9fa;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.toggle-text-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: white;
+}
+
+.toggle-text-input::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
 /* Enhanced History styles */
 .history-container {
   display: flex;
@@ -755,6 +785,16 @@
     width: 40px;
     height: 40px;
     font-size: 1.2rem; /* Increased from 1.1rem */
+  }
+  
+  .toggle-with-text-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  
+  .toggle-text-input {
+    min-width: 100%;
   }
   
   .history-activities-grid {
