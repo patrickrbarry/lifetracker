@@ -286,7 +286,14 @@ const Lifetracker = () => {
               onChange={(e) => updateDailyEntry(category.id, activity.id, parseInt(e.target.value))}
               className="number-field"
             />
-          </div>
+            <button 
+            onClick={() => setCurrentView('dashboard')} 
+            className={`nav-button ${currentView === 'dashboard' ? 'active' : ''}`}
+          >
+            <Settings size={20} />
+            <span>Dashboard</span>
+          </button>
+        </div>
         );
       
       case 'numberPicker':
@@ -492,9 +499,238 @@ const Lifetracker = () => {
     }
   };
 
-  const getCategoryIcon = (iconName) => {
-    const IconComponent = categoryIcons[iconName];
-    return IconComponent ? <IconComponent size={24} /> : null;
+  const getCategoryColor = (categoryId) => {
+    const colorMap = {
+      gym: '#2563eb',        // Blue family
+      walks: '#16a34a',      // Green family  
+      intake: '#dc2626',     // Red family
+      games: '#7c3aed',      // Purple family
+      reading: '#ea580c',    // Orange family
+      social: '#0891b2',     // Cyan family
+      entertainment: '#be185d' // Pink family
+    };
+    return colorMap[categoryId] || '#6b7280'; // Default gray
+  };
+
+  const getAllActivitiesData = (timeRange = 7) => {
+    const dates = Object.keys(dailyEntries).sort((a, b) => new Date(a) - new Date(b));
+    const selectedDays = timeRange === 'all' ? dates : dates.slice(-timeRange);
+    
+    const allActivities = [];
+    let colorIndex = 0;
+    
+    categories.forEach(category => {
+      const baseColor = getCategoryColor(category.id);
+      
+      category.activities.forEach((activity, activityIndex) => {
+        const activityData = selectedDays.map(date => {
+          const dayData = dailyEntries[date] || {};
+          const key = `${category.id}_${activity.id}`;
+          let value = dayData[key];
+          
+          // Convert different value types to numbers for charting
+          if (typeof value === 'boolean') {
+            value = value ? 1 : 0;
+          } else if (typeof value === 'object' && value.enabled !== undefined) {
+            value = value.enabled ? 1 : 0;
+          } else if (typeof value === 'string' && value !== '') {
+            value = 1;
+          } else if (typeof value !== 'number') {
+            value = 0;
+          }
+          
+          return {
+            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            fullDate: date,
+            value: value
+          };
+        });
+        
+        // Create variations of the base color for multiple activities in same category
+        const colorVariations = [
+          baseColor,
+          baseColor + '99', // Add transparency
+          baseColor.replace(')', ', 0.7)').replace('rgb', 'rgba'), // More transparent
+        ];
+        
+        allActivities.push({
+          categoryName: category.name,
+          activityName: activity.name,
+          fullName: `${category.name}: ${activity.name}`,
+          data: activityData,
+          color: activityIndex < colorVariations.length ? 
+                 baseColor : 
+                 `hsl(${(colorIndex * 137.5) % 360}, 70%, 50%)`, // Fallback to HSL
+          categoryId: category.id
+        });
+        
+        colorIndex++;
+      });
+    });
+    
+    return allActivities;
+  };
+
+  const renderDashboardView = () => {
+    const allActivitiesData = getAllActivitiesData(timeRange);
+    
+    if (allActivitiesData.length === 0 || Object.keys(dailyEntries).length === 0) {
+      return (
+        <div className="dashboard-empty">
+          <h3>No data yet</h3>
+          <p>Start tracking activities to see your unified dashboard!</p>
+        </div>
+      );
+    }
+
+    // Get the date range for x-axis
+    const dateRange = allActivitiesData[0]?.data || [];
+    const maxValue = Math.max(...allActivitiesData.flatMap(activity => 
+      activity.data.map(d => d.value)
+    ), 1);
+
+    return (
+      <div className="dashboard-container">
+        <div className="dashboard-header">
+          <h2 className="dashboard-title">Activity Dashboard</h2>
+          <div className="time-range-selector">
+            <button 
+              onClick={() => setTimeRange(7)} 
+              className={`time-range-button ${timeRange === 7 ? 'active' : ''}`}
+            >
+              7 Days
+            </button>
+            <button 
+              onClick={() => setTimeRange(14)} 
+              className={`time-range-button ${timeRange === 14 ? 'active' : ''}`}
+            >
+              14 Days
+            </button>
+            <button 
+              onClick={() => setTimeRange(30)} 
+              className={`time-range-button ${timeRange === 30 ? 'active' : ''}`}
+            >
+              30 Days
+            </button>
+            <button 
+              onClick={() => setTimeRange('all')} 
+              className={`time-range-button ${timeRange === 'all' ? 'active' : ''}`}
+            >
+              All Time
+            </button>
+          </div>
+        </div>
+
+        <div className="unified-chart-container">
+          <div className="chart-main">
+            <svg width="100%" height="400" viewBox="0 0 800 400" className="unified-chart">
+              {/* Background */}
+              <rect width="800" height="400" fill="#f8f9fa" rx="8"/>
+              
+              {/* Grid lines */}
+              {[...Array(6)].map((_, i) => (
+                <g key={i}>
+                  <line
+                    x1="60"
+                    y1={60 + (i * 50)}
+                    x2="740"
+                    y2={60 + (i * 50)}
+                    stroke="#e5e7eb"
+                    strokeWidth="1"
+                  />
+                </g>
+              ))}
+              
+              {/* Y-axis labels */}
+              {[...Array(6)].map((_, i) => (
+                <text
+                  key={i}
+                  x="45"
+                  y={65 + (i * 50)}
+                  textAnchor="end"
+                  fontSize="12"
+                  fill="#6b7280"
+                >
+                  {Math.round(maxValue - (i * maxValue / 5))}
+                </text>
+              ))}
+              
+              {/* X-axis labels */}
+              {dateRange.map((datePoint, i) => {
+                if (i % Math.max(1, Math.floor(dateRange.length / 8)) === 0) {
+                  return (
+                    <text
+                      key={i}
+                      x={60 + (i / (dateRange.length - 1)) * 680}
+                      y="385"
+                      textAnchor="middle"
+                      fontSize="12"
+                      fill="#6b7280"
+                    >
+                      {datePoint.date}
+                    </text>
+                  );
+                }
+                return null;
+              })}
+              
+              {/* Activity lines */}
+              {allActivitiesData.map((activity, activityIndex) => {
+                if (activity.data.length > 1) {
+                  const points = activity.data.map((d, i) => ({
+                    x: 60 + (i / (activity.data.length - 1)) * 680,
+                    y: 310 - (d.value / maxValue) * 250
+                  }));
+                  
+                  const pathData = points.map((p, i) => 
+                    i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+                  ).join(' ');
+                  
+                  return (
+                    <g key={activityIndex}>
+                      <path 
+                        d={pathData} 
+                        stroke={activity.color} 
+                        strokeWidth="2.5" 
+                        fill="none"
+                        opacity="0.8"
+                      />
+                      {points.map((p, i) => (
+                        <circle
+                          key={i}
+                          cx={p.x}
+                          cy={p.y}
+                          r="3"
+                          fill={activity.color}
+                          stroke="white"
+                          strokeWidth="1"
+                        />
+                      ))}
+                    </g>
+                  );
+                }
+                return null;
+              })}
+            </svg>
+          </div>
+          
+          <div className="chart-legend">
+            <h4>Activities</h4>
+            <div className="legend-items">
+              {allActivitiesData.map((activity, index) => (
+                <div key={index} className="legend-item">
+                  <div 
+                    className="legend-color" 
+                    style={{ backgroundColor: activity.color }}
+                  ></div>
+                  <span className="legend-text">{activity.fullName}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const getHistoryData = (timeRange = 7) => {
@@ -596,17 +832,17 @@ const Lifetracker = () => {
               {categoryHistory.activities.map((activity) => (
                 <div key={activity.activityId} className="history-activity-chart">
                   <h4 className="activity-chart-title">{activity.activityName}</h4>
-                  <div className="mini-chart">
-                    <svg width="100%" height="60" viewBox="0 0 200 60">
+                  <div className="simple-line-chart">
+                    <svg width="100%" height="80" viewBox="0 0 300 80">
                       {/* Chart background */}
-                      <rect width="200" height="60" fill="#f8f9fa" rx="4"/>
+                      <rect width="300" height="80" fill="#f8f9fa" rx="4"/>
                       
                       {/* Chart lines and points */}
                       {activity.data.length > 1 && (() => {
                         const maxValue = Math.max(...activity.data.map(d => d.value), 1);
                         const points = activity.data.map((d, i) => ({
-                          x: (i / (activity.data.length - 1)) * 180 + 10,
-                          y: 50 - (d.value / maxValue) * 40
+                          x: (i / (activity.data.length - 1)) * 280 + 10,
+                          y: 70 - (d.value / maxValue) * 60
                         }));
                         
                         const pathData = points.map((p, i) => 
@@ -615,11 +851,23 @@ const Lifetracker = () => {
                         
                         return (
                           <>
+                            {/* Grid lines */}
+                            {[...Array(4)].map((_, i) => (
+                              <line
+                                key={i}
+                                x1="10"
+                                y1={10 + (i * 15)}
+                                x2="290"
+                                y2={10 + (i * 15)}
+                                stroke="#e9ecef"
+                                strokeWidth="1"
+                              />
+                            ))}
                             {/* Line */}
                             <path 
                               d={pathData} 
                               stroke="#2563eb" 
-                              strokeWidth="2" 
+                              strokeWidth="3" 
                               fill="none"
                             />
                             {/* Points */}
@@ -628,29 +876,16 @@ const Lifetracker = () => {
                                 key={i}
                                 cx={p.x}
                                 cy={p.y}
-                                r="3"
+                                r="4"
                                 fill="#2563eb"
+                                stroke="white"
+                                strokeWidth="2"
                               />
                             ))}
                           </>
                         );
                       })()}
                     </svg>
-                  </div>
-                  
-                  {/* Recent values */}
-                  <div className="recent-values">
-                    {activity.data.slice(-3).map((day, index) => (
-                      <div key={index} className="recent-value">
-                        <span className="recent-date">{day.date}</span>
-                        <span className="recent-number">
-                          {activity.inputType === 'toggle' || activity.inputType === 'checkbox' 
-                            ? (day.value ? '✓' : '✗')
-                            : day.value
-                          }
-                        </span>
-                      </div>
-                    ))}
                   </div>
                 </div>
               ))}
@@ -686,6 +921,13 @@ const Lifetracker = () => {
           >
             <BarChart3 size={20} />
             <span>History</span>
+          </button>
+          <button 
+            onClick={() => setCurrentView('dashboard')} 
+            className={`nav-button ${currentView === 'dashboard' ? 'active' : ''}`}
+          >
+            <Settings size={20} />
+            <span>Dashboard</span>
           </button>
         </div>
       </div>
